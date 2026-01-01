@@ -1,6 +1,7 @@
 QT       += core gui
 QT += widgets quick quickwidgets webview
 QT += widgets quick quickwidgets location positioning
+QT += positioning location
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
 CONFIG += c++17
