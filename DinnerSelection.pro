@@ -1,5 +1,6 @@
 QT       += core gui
-
+QT += widgets quick quickwidgets webview
+QT += widgets quick quickwidgets location positioning
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
 CONFIG += c++17
@@ -22,3 +23,9 @@ FORMS += \
 qnx: target.path = /tmp/$${TARGET}/bin
 else: unix:!android: target.path = /opt/$${TARGET}/bin
 !isEmpty(target.path): INSTALLS += target
+
+DISTFILES += \
+    map.qml
+
+RESOURCES += \
+    resources.qrc

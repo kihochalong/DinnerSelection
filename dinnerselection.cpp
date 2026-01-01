@@ -15,6 +15,13 @@ DinnerSelection::DinnerSelection(QWidget *parent)
 
     connect(ui->btnMinus, &QPushButton::clicked,
             this, &DinnerSelection::decreasePrice);
+    mapWidget = new QQuickWidget(this);
+    mapWidget->setResizeMode(QQuickWidget::SizeRootObjectToView);
+
+    mapWidget->setSource(QUrl("qrc:/map.qml"));
+
+    ui->mapLayout->addWidget(mapWidget);
+    ui->labelMap->hide();
 }
 
 DinnerSelection::~DinnerSelection()

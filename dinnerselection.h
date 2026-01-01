@@ -2,6 +2,7 @@
 #define DINNERSELECTION_H
 
 #include <QWidget>
+#include <QQuickWidget>
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -24,6 +25,7 @@ private slots:
 private slots:
     void increasePrice();
     void decreasePrice();
-
+private:
+    QQuickWidget *mapWidget;
 };
 #endif // DINNERSELECTION_H
