@@ -1,4 +1,5 @@
 #include "dinnerselection.h"
+#include "qtextedit.h"
 #include "ui_dinnerselection.h"
 #include <QUrlQuery>
 #include <QJsonDocument>
@@ -7,11 +8,20 @@
 #include <QDebug>
 #include <QRandomGenerator>
 #include <QTimer>
+#include <QMessageBox>
+#include <QInputDialog>
+#include <QFormLayout>
+#include <QDialogButtonBox>
+#include <QSpinBox>
+#include <QDateTime>
 
 DinnerSelection::DinnerSelection(QWidget *parent)
     : QWidget(parent)
     , ui(new Ui::DinnerSelection)
 {
+    setFixedSize(1200, 800);
+    setMinimumSize(600, 500);
+
     ui->setupUi(this);
     connect(ui->horizontalSlider,
             &QSlider::valueChanged,
@@ -94,6 +104,74 @@ DinnerSelection::DinnerSelection(QWidget *parent)
                 .arg(QString::number(distanceKm, 'f', 2))
             );
     });
+    // 1. 設定歷史清單樣式與主清單一致
+    ui->listHistory->setStyleSheet(
+        "QListWidget::item { border-bottom: 1px solid #E0E0E0; padding: 5px; font-size: 12px; }"
+        "QListWidget::item:selected { background-color: #FFF9C4; color: black; }"
+        );
+
+    // 2. 「確定前往」按鈕：全程式唯一的確認門戶
+    connect(ui->btngo, &QPushButton::clicked, this, [=]() {
+        int currentRow = ui->listRestaurant->currentRow();
+
+        // 檢查是否有選取店家
+        if (currentRow < 0 || currentRow >= currentFilteredRestaurants.size()) {
+            QMessageBox::warning(this, "提示", "請先選擇一家餐廳！");
+            return;
+        }
+
+        QJsonObject picked = currentFilteredRestaurants[currentRow];
+        QString name = picked["name"].toString();
+
+        // 【唯一的一次確認】
+        QMessageBox::StandardButton reply = QMessageBox::question(
+            this, "出發確認",
+            QString("確定要前往「%1」嗎？").arg(name),
+            QMessageBox::Yes | QMessageBox::No
+            );
+
+        if (reply == QMessageBox::Yes) {
+            // A. 建立顯示文字並貼上歷史列表
+            QString timeStr = QDateTime::currentDateTime().toString("MM/dd HH:mm");
+            ui->listHistory->addItem(QString("[%1] %2").arg(timeStr).arg(name));
+            ui->listHistory->scrollToBottom();
+
+            // B. 存入歷史資料容器
+            historyData.append(picked);
+
+            // C. (選填) 成功後給個簡短小提示或直接不彈窗也可以
+            // QMessageBox::information(this, "出發", "祝您用餐愉快！");
+        }
+    });
+
+    // 3. 歷史紀錄點擊：地圖自動跳轉 (不彈窗)
+    connect(ui->listHistory, &QListWidget::itemClicked, this, [=]() {
+        int row = ui->listHistory->currentRow();
+        if (row >= 0 && row < historyData.size()) {
+            QJsonObject picked = historyData[row];
+            QJsonObject loc = picked["geometry"].toObject()["location"].toObject();
+
+            QObject *rootObj = mapWidget->rootObject();
+            if (rootObj) {
+                QMetaObject::invokeMethod(rootObj, "updateMapMarker",
+                                          Q_ARG(QVariant, loc["lat"].toDouble()),
+                                          Q_ARG(QVariant, loc["lng"].toDouble()),
+                                          Q_ARG(QVariant, picked["name"].toString()));
+            }
+        }
+    });
+    connect(ui->btnAdd, &QPushButton::clicked, this, [=]() {
+        QObject *rootObj = mapWidget->rootObject();
+        if (!rootObj) return;
+
+        // 從 QML 地圖物件獲取目前中心點座標
+        double currentLat = rootObj->property("centerLat").toDouble();
+        double currentLon = rootObj->property("centerLng").toDouble();
+
+        // 呼叫新增功能
+        prepareManualAdd(currentLat, currentLon);
+    });
+
     mapWidget = new QQuickWidget(this);
     mapWidget->setResizeMode(QQuickWidget::SizeRootObjectToView);
 
@@ -102,9 +180,42 @@ DinnerSelection::DinnerSelection(QWidget *parent)
     ui->mapLayout->addWidget(mapWidget);
     ui->labelMap->hide();
     ui->listRestaurant->setStyleSheet(
-        "QListWidget::item { border-bottom: 1px solid #C0C0C0; padding: 8px; }"
+        "QListWidget::item { "
+        "   border-bottom: 1px solid #C0C0C0; "
+        "   padding: 8px; "
+        "}"
+        "QListWidget::item:selected { "
+        "   background-color: #e0f0ff; " // 增加選中時的背景色，讓使用者知道點了哪項
+        "   color: black; "
+        "}"
         );
+    connect(ui->listRestaurant, &QListWidget::itemClicked, this, [=]() {
+        int currentRow = ui->listRestaurant->currentRow();
 
+        // 檢查索引是否合法 (對應目前篩選後的餐廳清單)
+        if (currentRow >= 0 && currentRow < currentFilteredRestaurants.size()) {
+            QJsonObject picked = currentFilteredRestaurants[currentRow];
+
+            // 取得經緯度與名稱
+            QJsonObject loc = picked["geometry"].toObject()["location"].toObject();
+            double lat = loc["lat"].toDouble();
+            double lng = loc["lng"].toDouble();
+            QString name = picked["name"].toString();
+
+            // 呼叫 QML 函式讓地圖跳轉並標記位置
+            QObject *rootObj = mapWidget->rootObject();
+            if (rootObj) {
+                // 使用您現有的 QML 介面函式
+                QMetaObject::invokeMethod(rootObj, "updateMapMarker",
+                                          Q_ARG(QVariant, lat),
+                                          Q_ARG(QVariant, lng),
+                                          Q_ARG(QVariant, name));
+
+                // 可選：如果你希望地圖中心直接對準，也可以在 QML 裡把 map.center 設為該座標
+                qDebug() << "地圖已跳轉至：" << name << "(" << lat << "," << lng << ")";
+            }
+        }
+    });
     network = new QNetworkAccessManager(this);
     connect(network, &QNetworkAccessManager::finished,
             this, &DinnerSelection::onPlacesReply);
@@ -199,8 +310,8 @@ void DinnerSelection::onPlacesReply(QNetworkReply *reply)
     m_nextPageToken = root["next_page_token"].toString();
 
     if (!m_nextPageToken.isEmpty()) {
-        QTimer::singleShot(2000, this, [=]() {
-            fetchPlaces(23.7019, 120.4307, m_nextPageToken);
+        QTimer::singleShot(500, this, [=]() {
+            fetchPlaces(23.70310806, 120.43015111, m_nextPageToken);
         });
     } else {
         applyFiltersAndShow();
@@ -243,8 +354,8 @@ void DinnerSelection::applyFiltersAndShow()
 
         if (!obj.contains("geometry")) continue;
         QJsonObject loc = obj["geometry"].toObject()["location"].toObject();
-        double dLat = (loc["lat"].toDouble() - 23.7019) * 111.0;
-        double dLon = (loc["lng"].toDouble() - 120.4307) * 111.0 * cos(23.7019 * M_PI / 180.0);
+        double dLat = (loc["lat"].toDouble() - 23.70310806) * 111.0;
+        double dLon = (loc["lng"].toDouble() - 120.43015111) * 111.0 * cos(23.70310806 * M_PI / 180.0);
         double distanceKm = sqrt(dLat * dLat + dLon * dLon);
 
         if (distanceKm > maxDistanceKm)
@@ -252,16 +363,29 @@ void DinnerSelection::applyFiltersAndShow()
 
         currentFilteredRestaurants.append(obj);
 
+        // 找到迴圈中處理價格的部分，大約在 switch (priceLevel) 附近
         QString priceRange;
-        switch (priceLevel) {
-        case 0:  priceRange = "100內"; break;
-        case 1:  priceRange = "100~200"; break;
-        case 2:  priceRange = "200~300"; break;
-        case 3:  priceRange = "300~500"; break;
-        case 4:  priceRange = "500以上"; break;
-        default: priceRange = "未知價位"; break;
+
+        // 1. 優先檢查是否有手動輸入的自定義價格
+        if (obj.contains("custom_price_text")) {
+            priceRange = obj["custom_price_text"].toString();
+        }
+        // 2. 如果沒有自定義文字，才執行原本的 Google 價格等級轉換
+        else {
+            int priceLevel = obj["price_level"].toInt(-1);
+            switch (priceLevel) {
+            case 0:  priceRange = "100內"; break;
+            case 1:  priceRange = "100~200"; break;
+            case 2:  priceRange = "200~300"; break;
+            case 3:  priceRange = "300~500"; break;
+            case 4:  priceRange = "500以上"; break;
+            default: priceRange = "未知"; break; // 當 API 沒提供且也不是手動新增時顯示
+            }
         }
 
+        // 之後程式碼會將此 priceRange 加入到列表顯示...
+
+        // 之後程式碼會將此 priceRange 加入到列表顯示...
         ui->listRestaurant->addItem(
             QString("🍽 %1\n"
                     " 💰 %3\n"
@@ -299,19 +423,57 @@ void DinnerSelection::applyFiltersAndShow()
         case 4:  dailyPriceRange = "500以上"; break;
         default: dailyPriceRange = "未知"; break;
         }
-        ui->label->setText(
-            QString("✨ 每日推薦：\n"
-                    "店名：%1\n"
-                    "評分：⭐ %2\n"
-                    "價位：💰 %3\n"
-                    "距離：📍 %4 km")
-                .arg(dailyName)
-                .arg(dailyRating < 0 ? "無" : QString::number(dailyRating))
-                .arg(dailyPriceRange)
-                .arg(QString::number(dailyDistance, 'f', 2))
-            );
+}
+}
+void DinnerSelection::prepareManualAdd(double lat, double lon) {
+    // 1. 建立對話盒 (包含名稱與價格範圍輸入)
+    QDialog dialog(this);
+    dialog.setWindowTitle("新增中心點店家");
+    QFormLayout form(&dialog);
 
-    } else {
-        ui->label->setText("✨ 每日推薦：\n目前無符合條件的店家");
+    QLineEdit *nameEdit = new QLineEdit(&dialog);
+    QLineEdit *priceRangeEdit = new QLineEdit(&dialog);
+    priceRangeEdit->setPlaceholderText("輸入價格範圍 (如: 200~500)");
+
+    form.addRow("店家名稱:", nameEdit);
+    form.addRow("價格範圍:", priceRangeEdit);
+
+    QDialogButtonBox buttonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    form.addRow(&buttonBox);
+
+    connect(&buttonBox, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(&buttonBox, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+
+    // 2. 執行並處理資料
+    if (dialog.exec() == QDialog::Accepted && !nameEdit->text().isEmpty()) {
+
+        // 封裝成與 Google API 一致的 JSON 格式，使其能被 applyFiltersAndShow 處理
+        QJsonObject newStore;
+        newStore["name"] = nameEdit->text();
+        newStore["custom_price_text"] = priceRangeEdit->text(); // 自定義價格欄位
+        newStore["rating"] = 5.0; // 手動新增預設滿分
+
+        QJsonObject loc;
+        loc["lat"] = lat;
+        loc["lng"] = lon;
+        QJsonObject geometry;
+        geometry["location"] = loc;
+        newStore["geometry"] = geometry;
+
+        // 3. 加入清單並永久固定在目前的執行階段中
+        allRestaurants.append(newStore);
+
+        // 4. 立即刷新列表與顯示
+        applyFiltersAndShow();
+
+        // 5. 在地圖上目前的中心位置插上標記 (呼叫 QML 現有函式)
+        QObject *rootObj = mapWidget->rootObject();
+        if (rootObj) {
+            QMetaObject::invokeMethod(rootObj, "updateMapMarker",
+                                      Q_ARG(QVariant, lat),
+                                      Q_ARG(QVariant, lon),
+                                      Q_ARG(QVariant, nameEdit->text()));
+        }
     }
 }
+
