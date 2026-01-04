@@ -19,7 +19,7 @@
   <property name="windowTitle">
    <string>DinnerSelection</string>
   </property>
-  <layout class="QHBoxLayout" name="horizontalLayout" stretch="0,0,6">
+  <layout class="QHBoxLayout" name="horizontalLayout" stretch="0,0,0,6">
    <item>
     <widget class="QFrame" name="sideBar">
      <property name="maximumSize">
@@ -294,19 +294,9 @@
        </widget>
       </item>
       <item>
-       <widget class="QPushButton" name="btngood">
+       <widget class="QPushButton" name="btngo">
         <property name="text">
-         <string>新增喜好</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QLabel" name="labelRandomResult">
-        <property name="text">
-         <string>抽取結果</string>
-        </property>
-        <property name="alignment">
-         <set>Qt::AlignmentFlag::AlignCenter</set>
+         <string>確定前往</string>
         </property>
        </widget>
       </item>
@@ -318,9 +308,9 @@
        </widget>
       </item>
       <item>
-       <widget class="QLabel" name="label">
+       <widget class="QLabel" name="labelRandomResult">
         <property name="text">
-         <string>每日推薦</string>
+         <string>抽取結果</string>
         </property>
         <property name="alignment">
          <set>Qt::AlignmentFlag::AlignCenter</set>
@@ -354,7 +344,7 @@
         </size>
        </property>
        <property name="text">
-        <string>參考列表</string>
+        <string>每日推薦</string>
        </property>
       </widget>
      </item>
@@ -389,6 +379,33 @@
        </property>
        <property name="batchSize">
         <number>100</number>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <layout class="QVBoxLayout" name="verticalLayout_6">
+     <item>
+      <widget class="QLabel" name="label_7">
+       <property name="text">
+        <string>歷史紀錄</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QListWidget" name="listHistory">
+       <property name="minimumSize">
+        <size>
+         <width>180</width>
+         <height>578</height>
+        </size>
+       </property>
+       <property name="maximumSize">
+        <size>
+         <width>180</width>
+         <height>578</height>
+        </size>
        </property>
       </widget>
      </item>

@@ -13,6 +13,8 @@
 #include <QFormLayout>
 #include <QDialogButtonBox>
 #include <QSpinBox>
+#include <QDateTime>
+
 DinnerSelection::DinnerSelection(QWidget *parent)
     : QWidget(parent)
     , ui(new Ui::DinnerSelection)
@@ -102,10 +104,62 @@ DinnerSelection::DinnerSelection(QWidget *parent)
                 .arg(QString::number(distanceKm, 'f', 2))
             );
     });
+    // 1. 設定歷史清單樣式與主清單一致
+    ui->listHistory->setStyleSheet(
+        "QListWidget::item { border-bottom: 1px solid #E0E0E0; padding: 5px; font-size: 12px; }"
+        "QListWidget::item:selected { background-color: #FFF9C4; color: black; }"
+        );
 
-    connect(ui->btngood, &QPushButton::clicked, this, &DinnerSelection::showAddConfirmation);
-    // 找到 ui->btnAdd 的連接並修改
-    // 在建構函式中修改 connect
+    // 2. 「確定前往」按鈕：全程式唯一的確認門戶
+    connect(ui->btngo, &QPushButton::clicked, this, [=]() {
+        int currentRow = ui->listRestaurant->currentRow();
+
+        // 檢查是否有選取店家
+        if (currentRow < 0 || currentRow >= currentFilteredRestaurants.size()) {
+            QMessageBox::warning(this, "提示", "請先選擇一家餐廳！");
+            return;
+        }
+
+        QJsonObject picked = currentFilteredRestaurants[currentRow];
+        QString name = picked["name"].toString();
+
+        // 【唯一的一次確認】
+        QMessageBox::StandardButton reply = QMessageBox::question(
+            this, "出發確認",
+            QString("確定要前往「%1」嗎？").arg(name),
+            QMessageBox::Yes | QMessageBox::No
+            );
+
+        if (reply == QMessageBox::Yes) {
+            // A. 建立顯示文字並貼上歷史列表
+            QString timeStr = QDateTime::currentDateTime().toString("MM/dd HH:mm");
+            ui->listHistory->addItem(QString("[%1] %2").arg(timeStr).arg(name));
+            ui->listHistory->scrollToBottom();
+
+            // B. 存入歷史資料容器
+            historyData.append(picked);
+
+            // C. (選填) 成功後給個簡短小提示或直接不彈窗也可以
+            // QMessageBox::information(this, "出發", "祝您用餐愉快！");
+        }
+    });
+
+    // 3. 歷史紀錄點擊：地圖自動跳轉 (不彈窗)
+    connect(ui->listHistory, &QListWidget::itemClicked, this, [=]() {
+        int row = ui->listHistory->currentRow();
+        if (row >= 0 && row < historyData.size()) {
+            QJsonObject picked = historyData[row];
+            QJsonObject loc = picked["geometry"].toObject()["location"].toObject();
+
+            QObject *rootObj = mapWidget->rootObject();
+            if (rootObj) {
+                QMetaObject::invokeMethod(rootObj, "updateMapMarker",
+                                          Q_ARG(QVariant, loc["lat"].toDouble()),
+                                          Q_ARG(QVariant, loc["lng"].toDouble()),
+                                          Q_ARG(QVariant, picked["name"].toString()));
+            }
+        }
+    });
     connect(ui->btnAdd, &QPushButton::clicked, this, [=]() {
         QObject *rootObj = mapWidget->rootObject();
         if (!rootObj) return;
@@ -369,62 +423,8 @@ void DinnerSelection::applyFiltersAndShow()
         case 4:  dailyPriceRange = "500以上"; break;
         default: dailyPriceRange = "未知"; break;
         }
-        ui->label->setText(
-            QString("✨ 每日推薦：\n"
-                    "店名：%1\n"
-                    "評分：⭐ %2\n"
-                    "價位：💰 %3\n"
-                    "距離：📍 %4 km")
-                .arg(dailyName)
-                .arg(dailyRating < 0 ? "無" : QString::number(dailyRating))
-                .arg(dailyPriceRange)
-                .arg(QString::number(dailyDistance, 'f', 2))
-            );
-
-    } else {
-        ui->label->setText("✨ 每日推薦：\n目前無符合條件的店家");
-    }
 }
-void DinnerSelection::showAddConfirmation()
-{
-    // 1. 取得目前清單中選取的項目索引
-    int currentRow = ui->listRestaurant->currentRow();
-
-    // 檢查是否有選取項目且索引合法
-    if (currentRow < 0 || currentRow >= currentFilteredRestaurants.size()) {
-        QMessageBox::warning(this, "提示", "請先從清單中選擇一家餐廳！");
-        return;
-    }
-
-    // 2. 取得該店家的 JSON 資料
-    QJsonObject picked = currentFilteredRestaurants[currentRow];
-    QString name = picked["name"].toString();
-    double rating = picked["rating"].toDouble(-1);
-
-    // 3. 建立對話框內容
-    QString info = QString("您是否要將以下店家加入收藏？\n\n"
-                           "店名：%1\n"
-                           "評分：⭐ %2")
-                       .arg(name)
-                       .arg(rating < 0 ? "無" : QString::number(rating));
-
-    // 4. 彈出對話框 (包含確認與取消鍵)
-    QMessageBox::StandardButton reply;
-    reply = QMessageBox::question(this, "確認新增", info,
-                                  QMessageBox::Yes | QMessageBox::No);
-
-    if (reply == QMessageBox::Yes) {
-        // 在這裡執行「新增」的邏輯，例如存入資料庫或另一個清單
-        qDebug() << "已新增店家：" << name;
-        QMessageBox::information(this, "成功", name + " 已加入您的清單！");
-    } else {
-        qDebug() << "使用者取消新增";
-    }
 }
-#include <QInputDialog>
-#include <QFormLayout>
-#include <QDialogButtonBox>
-
 void DinnerSelection::prepareManualAdd(double lat, double lon) {
     // 1. 建立對話盒 (包含名稱與價格範圍輸入)
     QDialog dialog(this);
@@ -476,3 +476,4 @@ void DinnerSelection::prepareManualAdd(double lat, double lon) {
         }
     }
 }
+

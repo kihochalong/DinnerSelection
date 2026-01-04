@@ -53,7 +53,8 @@ private:
 
     // 如果您用不到 showRestaurants 可以刪除，或保留宣告
     void showRestaurants(const QJsonArray &results);
-    void showAddConfirmation();
+    QList<QString> historyRecords;// 儲存歷史紀錄的店名與時間
+    QList<QJsonObject> historyData; // 儲存去過的店家物件
 
 };
 
