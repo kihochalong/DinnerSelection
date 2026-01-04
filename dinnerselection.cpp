@@ -299,18 +299,38 @@ void DinnerSelection::applyFiltersAndShow() {
 
     if (currentFilteredRestaurants.isEmpty()) {
         ui->label->setText("✨ 每日推薦：\n目前無符合條件的店家");
-    } else {
-        int idx = QRandomGenerator::global()->bounded(currentFilteredRestaurants.size());
-        QJsonObject dp = currentFilteredRestaurants[idx];
-        QString dpPrice = dp.contains("custom_price_text") ? dp["custom_price_text"].toString() : "一般價位";
-        QJsonObject loc = dp["geometry"].toObject()["location"].toObject();
-        double dist = sqrt(pow((loc["lat"].toDouble()-23.7019)*111.0,2)+pow((loc["lng"].toDouble()-120.4307)*111.0*cos(23.7019*M_PI/180.0),2));
-
-        ui->label->setText(
-            QString("✨ 每日推薦：\n店名：%1\n評分：⭐ %2\n價位：💰 %3\n距離：📍 %4 km")
-                .arg(dp["name"].toString())
-                .arg(dp["rating"].toDouble(-1) < 0 ? "無" : QString::number(dp["rating"].toDouble()))
-                .arg(dpPrice).arg(QString::number(dist, 'f', 2))
-            );
+        return;
     }
+
+    // 🔒 如果還沒推薦過，才隨機選一次
+    if (!hasRecommended) {
+        int idx = QRandomGenerator::global()->bounded(currentFilteredRestaurants.size());
+        recommendedRestaurant = currentFilteredRestaurants[idx];
+        hasRecommended = true;
+    }
+
+    // 👉 之後都用同一家
+    QJsonObject dp = recommendedRestaurant;
+
+    QString dpPrice = dp.contains("custom_price_text")
+                          ? dp["custom_price_text"].toString()
+                          : "一般價位";
+
+    QJsonObject loc = dp["geometry"].toObject()["location"].toObject();
+
+    double dist = sqrt(
+        pow((loc["lat"].toDouble() - 23.7019) * 111.0, 2) +
+        pow((loc["lng"].toDouble() - 120.4307) * 111.0 *
+                cos(23.7019 * M_PI / 180.0), 2)
+        );
+
+    ui->label->setText(
+        QString("✨ 每日推薦：\n店名：%1\n評分：⭐ %2\n價位：💰 %3\n距離：📍 %4 km")
+            .arg(dp["name"].toString())
+            .arg(dp["rating"].toDouble(-1) < 0
+                     ? "無"
+                     : QString::number(dp["rating"].toDouble()))
+            .arg(dpPrice)
+            .arg(QString::number(dist, 'f', 2))
+        );
 }

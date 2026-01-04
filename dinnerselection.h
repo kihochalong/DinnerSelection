@@ -41,7 +41,8 @@ private:
     QList<QJsonObject> allRestaurants;            // 原始資料池
     QList<QJsonObject> currentFilteredRestaurants; // 篩選後的抽籤池
     QString m_nextPageToken;                       // 分頁標記
-
+    QJsonObject recommendedRestaurant;
+    bool hasRecommended = false;
     // 篩選參數預設值
     double minRating = 0.0;
     int maxDistanceKm = 5;
