@@ -9,6 +9,9 @@
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QQuickItem>
+#include <QPushButton>
+#include <QMessageBox>
+#include <QSpinBox>
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class DinnerSelection; }
@@ -29,12 +32,12 @@ private slots:
     void decreasePrice();
     void onPlacesReply(QNetworkReply *reply);
     void applyFiltersAndShow();
+    void prepareManualAdd(double lat = 23.7031, double lon = 120.4301);
 
 private:
     Ui::DinnerSelection *ui;
     QQuickWidget *mapWidget;
     QNetworkAccessManager *network;
-
     // 資料儲存
     QList<QJsonObject> allRestaurants;            // 原始資料池
     QList<QJsonObject> currentFilteredRestaurants; // 篩選後的抽籤池
@@ -50,6 +53,8 @@ private:
 
     // 如果您用不到 showRestaurants 可以刪除，或保留宣告
     void showRestaurants(const QJsonArray &results);
+    void showAddConfirmation();
+
 };
 
 #endif // DINNERSELECTION_H
