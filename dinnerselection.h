@@ -33,6 +33,7 @@ private slots:
     void onPlacesReply(QNetworkReply *reply);
     void applyFiltersAndShow();
     void prepareManualAdd(double lat = 23.7031, double lon = 120.4301);
+    void addRestaurantToUI(const QJsonObject &obj);
 
 private:
     Ui::DinnerSelection *ui;
@@ -42,19 +43,19 @@ private:
     QList<QJsonObject> allRestaurants;            // 原始資料池
     QList<QJsonObject> currentFilteredRestaurants; // 篩選後的抽籤池
     QString m_nextPageToken;                       // 分頁標記
+    QVector<QJsonObject> favoriteRestaurants;
 
     // 篩選參數預設值
     double minRating = 0.0;
     int maxDistanceKm = 5;
 
-    // --- 核心功能函式 ---
-    // 【修正處】確保 fetchPlaces 只有這一個宣告，且帶有預設參數
     void fetchPlaces(double lat, double lon, QString pageToken = "");
 
-    // 如果您用不到 showRestaurants 可以刪除，或保留宣告
     void showRestaurants(const QJsonArray &results);
     QList<QString> historyRecords;// 儲存歷史紀錄的店名與時間
     QList<QJsonObject> historyData; // 儲存去過的店家物件
+    int calculateWeight(const QJsonObject &obj);
+
 
 };
 

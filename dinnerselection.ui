@@ -294,6 +294,13 @@
        </widget>
       </item>
       <item>
+       <widget class="QPushButton" name="btngood">
+        <property name="text">
+         <string>新增喜好</string>
+        </property>
+       </widget>
+      </item>
+      <item>
        <widget class="QPushButton" name="btngo">
         <property name="text">
          <string>確定前往</string>
@@ -344,7 +351,7 @@
         </size>
        </property>
        <property name="text">
-        <string>每日推薦</string>
+        <string>餐廳清單</string>
        </property>
       </widget>
      </item>

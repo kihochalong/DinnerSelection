@@ -57,43 +57,112 @@ DinnerSelection::DinnerSelection(QWidget *parent)
     });
     connect(ui->pushButton, &QPushButton::clicked,
             this, &DinnerSelection::applyFiltersAndShow);
+    if (ui->btngood) {
+        connect(ui->btngood, &QPushButton::clicked, this, [=](){
+            int currentRow = ui->listRestaurant->currentRow();
+            if (currentRow < 0 || currentRow >= currentFilteredRestaurants.size()) {
+                QMessageBox::warning(this, "提示", "請先選擇餐廳");
+                return;
+            }
+
+            QJsonObject picked = currentFilteredRestaurants[currentRow];
+
+            // 避免重複加入喜好
+            for (const auto &f : favoriteRestaurants) {
+                if (f["name"].toString() == picked["name"].toString()) {
+                    QMessageBox::information(this, "提示", "此餐廳已在喜好中");
+                    return;
+                }
+            }
+
+            favoriteRestaurants.append(picked);
+            QMessageBox::information(this, "成功", picked["name"].toString() + " 已加入喜好！");
+        });
+    }
+
     connect(ui->btnPick, &QPushButton::clicked, this, [=]() {
+
         if (currentFilteredRestaurants.isEmpty()) {
             ui->labelRandomResult->setText("🎲 隨機選取\n請先進行篩選");
             return;
         }
 
-        int randomIndex = QRandomGenerator::global()->bounded(currentFilteredRestaurants.size());
-        QJsonObject picked = currentFilteredRestaurants[randomIndex];
+        // 🎯 權重池
+        QVector<QJsonObject> pool;
+
+        for (const auto &obj : currentFilteredRestaurants) {
+
+            int weight = 1;
+            QString name = obj["name"].toString();
+
+            // ❤️ 喜好加權
+            for (const auto &f : favoriteRestaurants) {
+                if (f["name"].toString() == name) {
+                    weight += 3;
+                    break;
+                }
+            }
+
+            // 📜 歷史降權
+            int historyCount = 0;
+            for (const auto &h : historyData) {
+                if (h["name"].toString() == name)
+                    historyCount++;
+            }
+
+            if (historyCount >= 2)
+                weight = 0;
+            else
+                weight -= historyCount;
+
+            weight = qMax(weight, 0);
+
+            for (int i = 0; i < weight; ++i)
+                pool.append(obj);
+        }
+
+        if (pool.isEmpty()) {
+            ui->labelRandomResult->setText("🎲 沒有可抽選的餐廳");
+            return;
+        }
+
+        // 🎲 抽選
+        QJsonObject picked =
+            pool[QRandomGenerator::global()->bounded(pool.size())];
 
         QString name = picked["name"].toString();
-        QJsonObject locObj = picked["geometry"].toObject()["location"].toObject();
-        double lat = locObj["lat"].toDouble();
-        double lon = locObj["lng"].toDouble();
+        double rating = picked["rating"].toDouble(-1);
 
+        // 價位
+        QString priceRange;
+        if (picked.contains("custom_price_text")) {
+            priceRange = picked["custom_price_text"].toString();
+        } else {
+            int pl = picked["price_level"].toInt(-1);
+            switch (pl) {
+            case 0: priceRange = "100內"; break;
+            case 1: priceRange = "100~200"; break;
+            case 2: priceRange = "200~300"; break;
+            case 3: priceRange = "300~500"; break;
+            case 4: priceRange = "500以上"; break;
+            default: priceRange = "未知"; break;
+            }
+        }
+
+        // 距離
+        QJsonObject loc = picked["geometry"].toObject()["location"].toObject();
+        double dLat = (loc["lat"].toDouble() - 23.7019) * 111.0;
+        double dLon = (loc["lng"].toDouble() - 120.4307) * 111.0
+                      * cos(23.7019 * M_PI / 180.0);
+        double dist = sqrt(dLat * dLat + dLon * dLon);
+
+        // 地圖跳轉
         QObject *rootObj = mapWidget->rootObject();
         if (rootObj) {
             QMetaObject::invokeMethod(rootObj, "updateMapMarker",
-                                      Q_ARG(QVariant, lat),
-                                      Q_ARG(QVariant, lon),
+                                      Q_ARG(QVariant, loc["lat"].toDouble()),
+                                      Q_ARG(QVariant, loc["lng"].toDouble()),
                                       Q_ARG(QVariant, name));
-        }
-
-        double rating = picked["rating"].toDouble(-1);
-        int priceLevel = picked["price_level"].toInt(-1);
-
-        double dLat = (lat - 23.7019) * 111.0;
-        double dLon = (lon - 120.4307) * 111.0 * cos(23.7019 * M_PI / 180.0);
-        double distanceKm = sqrt(dLat * dLat + dLon * dLon);
-
-        QString priceRange;
-        switch (priceLevel) {
-        case 0: priceRange = "100內"; break;
-        case 1: priceRange = "100~200"; break;
-        case 2: priceRange = "200~300"; break;
-        case 3: priceRange = "300~500"; break;
-        case 4: priceRange = "500以上"; break;
-        default: priceRange = "未知"; break;
         }
 
         ui->labelRandomResult->setText(
@@ -101,16 +170,17 @@ DinnerSelection::DinnerSelection(QWidget *parent)
                 .arg(name)
                 .arg(rating < 0 ? "無" : QString::number(rating))
                 .arg(priceRange)
-                .arg(QString::number(distanceKm, 'f', 2))
+                .arg(QString::number(dist, 'f', 2))
             );
     });
-    // 1. 設定歷史清單樣式與主清單一致
+
+
     ui->listHistory->setStyleSheet(
         "QListWidget::item { border-bottom: 1px solid #E0E0E0; padding: 5px; font-size: 12px; }"
         "QListWidget::item:selected { background-color: #FFF9C4; color: black; }"
         );
 
-    // 2. 「確定前往」按鈕：全程式唯一的確認門戶
+    // 2. 「確定前往」按鈕
     connect(ui->btngo, &QPushButton::clicked, this, [=]() {
         int currentRow = ui->listRestaurant->currentRow();
 
@@ -304,7 +374,20 @@ void DinnerSelection::onPlacesReply(QNetworkReply *reply)
 
     QJsonArray results = root["results"].toArray();
     for (const QJsonValue &v : results) {
-        allRestaurants.append(v.toObject());
+        QJsonObject obj = v.toObject();
+
+        bool exists = false;
+        for (const auto &e : allRestaurants) {
+            if (e["place_id"].toString() == obj["place_id"].toString()) {
+                exists = true;
+                break;
+            }
+        }
+        if (exists) continue;
+
+        allRestaurants.append(obj);
+        currentFilteredRestaurants.append(obj);
+        addRestaurantToUI(obj);
     }
 
     m_nextPageToken = root["next_page_token"].toString();
@@ -313,15 +396,53 @@ void DinnerSelection::onPlacesReply(QNetworkReply *reply)
         QTimer::singleShot(500, this, [=]() {
             fetchPlaces(23.70310806, 120.43015111, m_nextPageToken);
         });
-    } else {
-        applyFiltersAndShow();
     }
 
     reply->deleteLater();
 }
 
+int DinnerSelection::calculateWeight(const QJsonObject &obj)
+{
+    int weight = 1; // 基礎權重
+
+    QString name = obj["name"].toString();
+
+    // 喜好加權
+    for (const auto &f : favoriteRestaurants) {
+        if (f["name"].toString() == name) {
+            weight += 3;
+            break;
+        }
+    }
+
+    // 歷史降權
+    int historyCount = 0;
+    for (const auto &h : historyData) {
+        if (h["name"].toString() == name) {
+            historyCount++;
+        }
+    }
+
+    if (historyCount >= 2)
+        weight = 0;        // 避免一直抽到
+    else
+        weight -= historyCount;
+
+    return qMax(weight, 0);
+}
+
 void DinnerSelection::applyFiltersAndShow()
 {
+    ui->listRestaurant->clear();
+    currentFilteredRestaurants.clear();
+
+    // ⭐ 評分門檻
+    double minRatingThreshold = 0.0;
+    if (ui->checkBox_3->isChecked())      minRatingThreshold = 4.5;
+    else if (ui->checkBox_2->isChecked()) minRatingThreshold = 4.0;
+    else if (ui->checkBox->isChecked())   minRatingThreshold = 3.5;
+
+    // 💰 價格門檻
     int sliderValue = ui->horizontalSlider->value();
     int maxPriceLevel = -1;
     if (sliderValue == 100) maxPriceLevel = 0;
@@ -330,101 +451,40 @@ void DinnerSelection::applyFiltersAndShow()
     else if (sliderValue == 400) maxPriceLevel = 3;
     else if (sliderValue >= 500) maxPriceLevel = 4;
 
-    ui->listRestaurant->clear();
-    currentFilteredRestaurants.clear();
-
-    double minRatingThreshold = 0.0;
-    bool isRatingSelected = ui->checkBox->isChecked() || ui->checkBox_2->isChecked() || ui->checkBox_3->isChecked();
-    if (ui->checkBox_3->isChecked()) minRatingThreshold = 4.5;
-    else if (ui->checkBox_2->isChecked()) minRatingThreshold = 4.0;
-    else if (ui->checkBox->isChecked()) minRatingThreshold = 3.5;
-
     for (const QJsonObject &obj : allRestaurants) {
-        QString name = obj["name"].toString();
+
         double rating = obj["rating"].toDouble(-1);
         int priceLevel = obj["price_level"].toInt(-1);
 
-        if (isRatingSelected && rating >= 0 && rating < minRatingThreshold)
+        // 評分篩選
+        if (minRatingThreshold > 0 && rating >= 0 && rating < minRatingThreshold)
             continue;
 
-        if (sliderValue != 0) {
-            if (priceLevel != -1 && priceLevel > maxPriceLevel)
-                continue;
-        }
+        // 價格篩選
+        if (sliderValue != 0 && priceLevel != -1 && priceLevel > maxPriceLevel)
+            continue;
 
+        // 距離計算
         if (!obj.contains("geometry")) continue;
         QJsonObject loc = obj["geometry"].toObject()["location"].toObject();
-        double dLat = (loc["lat"].toDouble() - 23.70310806) * 111.0;
-        double dLon = (loc["lng"].toDouble() - 120.43015111) * 111.0 * cos(23.70310806 * M_PI / 180.0);
-        double distanceKm = sqrt(dLat * dLat + dLon * dLon);
+        double dLat = (loc["lat"].toDouble() - 23.7019) * 111.0;
+        double dLon = (loc["lng"].toDouble() - 120.4307) * 111.0
+                      * cos(23.7019 * M_PI / 180.0);
+        double dist = sqrt(dLat * dLat + dLon * dLon);
 
-        if (distanceKm > maxDistanceKm)
+        if (dist > maxDistanceKm)
             continue;
 
+        // 通過篩選
         currentFilteredRestaurants.append(obj);
-
-        // 找到迴圈中處理價格的部分，大約在 switch (priceLevel) 附近
-        QString priceRange;
-
-        // 1. 優先檢查是否有手動輸入的自定義價格
-        if (obj.contains("custom_price_text")) {
-            priceRange = obj["custom_price_text"].toString();
-        }
-        // 2. 如果沒有自定義文字，才執行原本的 Google 價格等級轉換
-        else {
-            int priceLevel = obj["price_level"].toInt(-1);
-            switch (priceLevel) {
-            case 0:  priceRange = "100內"; break;
-            case 1:  priceRange = "100~200"; break;
-            case 2:  priceRange = "200~300"; break;
-            case 3:  priceRange = "300~500"; break;
-            case 4:  priceRange = "500以上"; break;
-            default: priceRange = "未知"; break; // 當 API 沒提供且也不是手動新增時顯示
-            }
-        }
-
-        // 之後程式碼會將此 priceRange 加入到列表顯示...
-
-        // 之後程式碼會將此 priceRange 加入到列表顯示...
-        ui->listRestaurant->addItem(
-            QString("🍽 %1\n"
-                    " 💰 %3\n"
-                    "⭐ %2\n"
-                    "📍 %4 km")
-                .arg(name)
-                .arg(rating < 0 ? "無" : QString::number(rating))
-                .arg(priceRange)
-                .arg(QString::number(distanceKm, 'f', 2))
-            );
+        addRestaurantToUI(obj);
     }
 
     if (currentFilteredRestaurants.isEmpty()) {
-        ui->listRestaurant->addItem("⚠️ 沒有符合篩選條件的餐廳");
+        ui->listRestaurant->addItem("⚠️ 沒有符合條件的餐廳");
     }
-    if (!currentFilteredRestaurants.isEmpty()) {
-        int dailyIndex = QRandomGenerator::global()->bounded(currentFilteredRestaurants.size());
-        QJsonObject dailyPicked = currentFilteredRestaurants[dailyIndex];
-
-        QString dailyName = dailyPicked["name"].toString();
-        double dailyRating = dailyPicked["rating"].toDouble(-1);
-        int dailyPriceLevel = dailyPicked["price_level"].toInt(-1);
-
-        QJsonObject loc = dailyPicked["geometry"].toObject()["location"].toObject();
-        double dLat = (loc["lat"].toDouble() - 23.7019) * 111.0;
-        double dLon = (loc["lng"].toDouble() - 120.4307) * 111.0 * cos(23.7019 * M_PI / 180.0);
-        double dailyDistance = sqrt(dLat * dLat + dLon * dLon);
-
-        QString dailyPriceRange;
-        switch (dailyPriceLevel) {
-        case 0:  dailyPriceRange = "100內"; break;
-        case 1:  dailyPriceRange = "100~200"; break;
-        case 2:  dailyPriceRange = "200~300"; break;
-        case 3:  dailyPriceRange = "300~500"; break;
-        case 4:  dailyPriceRange = "500以上"; break;
-        default: dailyPriceRange = "未知"; break;
-        }
 }
-}
+
 void DinnerSelection::prepareManualAdd(double lat, double lon) {
     // 1. 建立對話盒 (包含名稱與價格範圍輸入)
     QDialog dialog(this);
@@ -476,4 +536,41 @@ void DinnerSelection::prepareManualAdd(double lat, double lon) {
         }
     }
 }
+
+void DinnerSelection::addRestaurantToUI(const QJsonObject &obj)
+{
+    QString name = obj["name"].toString();
+    double rating = obj["rating"].toDouble(-1);
+
+    // 價位
+    QString priceRange;
+    if (obj.contains("custom_price_text")) {
+        priceRange = obj["custom_price_text"].toString();
+    } else {
+        int priceLevel = obj["price_level"].toInt(-1);
+        switch (priceLevel) {
+        case 0: priceRange = "100內"; break;
+        case 1: priceRange = "100~200"; break;
+        case 2: priceRange = "200~300"; break;
+        case 3: priceRange = "300~500"; break;
+        case 4: priceRange = "500以上"; break;
+        default: priceRange = "未知"; break;
+        }
+    }
+
+    // 距離
+    QJsonObject loc = obj["geometry"].toObject()["location"].toObject();
+    double dLat = (loc["lat"].toDouble() - 23.7019) * 111.0;
+    double dLon = (loc["lng"].toDouble() - 120.4307) * 111.0 * cos(23.7019 * M_PI / 180.0);
+    double distanceKm = sqrt(dLat * dLat + dLon * dLon);
+
+    ui->listRestaurant->addItem(
+        QString("🍽 %1\n 💰 %2\n⭐ %3\n📍 %4 km")
+            .arg(name)
+            .arg(priceRange)
+            .arg(rating < 0 ? "無" : QString::number(rating))
+            .arg(QString::number(distanceKm, 'f', 2))
+        );
+}
+
 
