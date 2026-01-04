@@ -6,7 +6,8 @@ import QtQuick.Controls 2.15
 Item {
     id: root
     anchors.fill: parent
-
+    property double centerLat: map.center.latitude
+        property double centerLng: map.center.longitude
     // 提供給 C++ 呼叫的介面
     function updateMapMarker(lat, lon, name) {
         map.center = QtPositioning.coordinate(lat, lon)
@@ -27,6 +28,16 @@ Item {
         plugin: mapPlugin
         center: QtPositioning.coordinate(23.7019, 120.4307)
         zoomLevel: 14
+        property var lastClickedCoord: null
+
+        TapHandler {
+                onTapped: (eventPoint) => {
+                    // 取得點擊處的經緯度
+                    lastClickedCoord = Map.toCoordinate(eventPoint.position)
+                    // 移動一個臨時標記到該位置（可選）
+                    tempMarker.coordinate = lastClickedCoord
+                }
+            }
 
         MapQuickItem {
             id: marker
@@ -98,5 +109,38 @@ Item {
                 }
             }
         }
+        Item {
+                id: crosshair
+                anchors.fill: parent
+                z: 100 // 強制確保在最上層
+                enabled: false // 讓滑鼠點擊可以穿透準星操作地圖
+
+                // 垂直線
+                Rectangle {
+                    width: 2
+                    height: 40
+                    color: "red"
+                    anchors.centerIn: parent
+                }
+
+                // 水平線
+                Rectangle {
+                    width: 40
+                    height: 2
+                    color: "red"
+                    anchors.centerIn: parent
+                }
+
+                // 中心空心圓
+                Rectangle {
+                    width: 10
+                    height: 10
+                    radius: 5
+                    color: "transparent"
+                    border.color: "white"
+                    border.width: 2
+                    anchors.centerIn: parent
+                }
+            }
     }
 }
