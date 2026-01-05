@@ -290,14 +290,14 @@ void DinnerSelection::applyFiltersAndShow() {
         return;
     }
 
-    // 🔒 如果還沒推薦過，才隨機選一次
+    // 如果還沒推薦過，才隨機選一次
     if (!hasRecommended) {
         int idx = QRandomGenerator::global()->bounded(currentFilteredRestaurants.size());
         recommendedRestaurant = currentFilteredRestaurants[idx];
         hasRecommended = true;
     }
 
-    // 👉 之後都用同一家
+    // 之後都用同一家
     QJsonObject dp = recommendedRestaurant;
 
     QString dpPrice = dp.contains("custom_price_text")
