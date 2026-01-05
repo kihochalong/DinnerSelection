@@ -40,18 +40,6 @@ DinnerSelection::DinnerSelection(QWidget *parent)
     // 4. 按鈕功能連線
     connect(ui->pushButton, &QPushButton::clicked, this, &DinnerSelection::applyFiltersAndShow);
 
-    if (ui->btngood) {
-        connect(ui->btngood, &QPushButton::clicked, this, [=](){
-            int currentRow = ui->listRestaurant->currentRow();
-            if (currentRow < 0 || currentRow >= currentFilteredRestaurants.size()) {
-                QMessageBox::warning(this, "提示", "請先選擇餐廳");
-                return;
-            }
-            QJsonObject picked = currentFilteredRestaurants[currentRow];
-            QMessageBox::information(this, "成功", picked["name"].toString() + " 已加入喜好！");
-        });
-    }
-
     // 隨機選取按鈕
     connect(ui->btnPick, &QPushButton::clicked, this, [=]() {
         if (currentFilteredRestaurants.isEmpty()) {

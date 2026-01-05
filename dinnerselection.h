@@ -49,7 +49,6 @@ private:
 
     void fetchPlaces(double lat, double lon, QString pageToken = "");
     void showRestaurants(const QJsonArray &results);
-    void showAddConfirmation();
 
 };
 

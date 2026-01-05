@@ -294,13 +294,6 @@
        </widget>
       </item>
       <item>
-       <widget class="QPushButton" name="btngood">
-        <property name="text">
-         <string>新增喜好</string>
-        </property>
-       </widget>
-      </item>
-      <item>
        <widget class="QLabel" name="labelRandomResult">
         <property name="text">
          <string>抽取結果</string>
