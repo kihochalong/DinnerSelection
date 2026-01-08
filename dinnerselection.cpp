@@ -87,7 +87,6 @@ DinnerSelection::DinnerSelection(QWidget *parent)
             return;
         }
 
-        // 🎯 權重池
         QVector<QJsonObject> pool;
 
         for (const auto &obj : currentFilteredRestaurants) {
@@ -95,7 +94,6 @@ DinnerSelection::DinnerSelection(QWidget *parent)
             int weight = 1;
             QString name = obj["name"].toString();
 
-            // ❤️ 喜好加權
             for (const auto &f : favoriteRestaurants) {
                 if (f["name"].toString() == name) {
                     weight += 3;
@@ -103,7 +101,6 @@ DinnerSelection::DinnerSelection(QWidget *parent)
                 }
             }
 
-            // 📜 歷史降權
             int historyCount = 0;
             for (const auto &h : historyData) {
                 if (h["name"].toString() == name)
@@ -126,7 +123,6 @@ DinnerSelection::DinnerSelection(QWidget *parent)
             return;
         }
 
-        // 🎲 抽選
         QJsonObject picked =
             pool[QRandomGenerator::global()->bounded(pool.size())];
 
@@ -180,11 +176,9 @@ DinnerSelection::DinnerSelection(QWidget *parent)
         "QListWidget::item:selected { background-color: #FFF9C4; color: black; }"
         );
 
-    // 2. 「確定前往」按鈕
     connect(ui->btngo, &QPushButton::clicked, this, [=]() {
         int currentRow = ui->listRestaurant->currentRow();
 
-        // 檢查是否有選取店家
         if (currentRow < 0 || currentRow >= currentFilteredRestaurants.size()) {
             QMessageBox::warning(this, "提示", "請先選擇一家餐廳！");
             return;
@@ -192,8 +186,6 @@ DinnerSelection::DinnerSelection(QWidget *parent)
 
         QJsonObject picked = currentFilteredRestaurants[currentRow];
         QString name = picked["name"].toString();
-
-        // 【唯一的一次確認】
         QMessageBox::StandardButton reply = QMessageBox::question(
             this, "出發確認",
             QString("確定要前往「%1」嗎？").arg(name),
@@ -201,20 +193,14 @@ DinnerSelection::DinnerSelection(QWidget *parent)
             );
 
         if (reply == QMessageBox::Yes) {
-            // A. 建立顯示文字並貼上歷史列表
             QString timeStr = QDateTime::currentDateTime().toString("MM/dd HH:mm");
             ui->listHistory->addItem(QString("[%1] %2").arg(timeStr).arg(name));
             ui->listHistory->scrollToBottom();
 
-            // B. 存入歷史資料容器
             historyData.append(picked);
-
-            // C. (選填) 成功後給個簡短小提示或直接不彈窗也可以
-            // QMessageBox::information(this, "出發", "祝您用餐愉快！");
         }
     });
 
-    // 3. 歷史紀錄點擊：地圖自動跳轉 (不彈窗)
     connect(ui->listHistory, &QListWidget::itemClicked, this, [=]() {
         int row = ui->listHistory->currentRow();
         if (row >= 0 && row < historyData.size()) {
@@ -457,12 +443,18 @@ void DinnerSelection::applyFiltersAndShow()
         int priceLevel = obj["price_level"].toInt(-1);
 
         // 評分篩選
-        if (minRatingThreshold > 0 && rating >= 0 && rating < minRatingThreshold)
-            continue;
+        if (minRatingThreshold > 0) {
+            if (rating >= 0 && rating < minRatingThreshold) {
+                continue; // 有評分但低於門檻才刷掉
+            }
+        }
 
         // 價格篩選
-        if (sliderValue != 0 && priceLevel != -1 && priceLevel > maxPriceLevel)
-            continue;
+        if (sliderValue != 0) {
+            if (priceLevel != -1 && priceLevel > maxPriceLevel) {
+                continue; // 只有「明確太貴」才刷掉
+            }
+        }
 
         // 距離計算
         if (!obj.contains("geometry")) continue;
@@ -479,9 +471,9 @@ void DinnerSelection::applyFiltersAndShow()
         currentFilteredRestaurants.append(obj);
         addRestaurantToUI(obj);
     }
-
     if (currentFilteredRestaurants.isEmpty()) {
-        ui->listRestaurant->addItem("⚠️ 沒有符合條件的餐廳");
+        ui->labelRandomResult->setText("⚠️ 沒有符合條件的餐廳");
+        return;
     }
 }
 
